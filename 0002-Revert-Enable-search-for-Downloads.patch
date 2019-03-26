@@ -1,0 +1,127 @@
+From 5e9d8636939a12f3be9530979d9678d8f6885895 Mon Sep 17 00:00:00 2001
+From: David-76 <diman120776@gmail.com>
+Date: Tue, 26 Mar 2019 20:50:28 +0700
+Subject: [PATCH 2/2] Revert "Enable search for Downloads."
+
+This reverts commit b132242dc7f800c8e5444f6921a2689a101685a2.
+---
+ .../providers/downloads/DownloadProvider.java |  8 +++---
+ .../downloads/DownloadStorageProvider.java    | 26 ++-----------------
+ ...bstractDownloadProviderFunctionalTest.java | 18 -------------
+ 3 files changed, 5 insertions(+), 47 deletions(-)
+
+diff --git a/src/com/android/providers/downloads/DownloadProvider.java b/src/com/android/providers/downloads/DownloadProvider.java
+index 7571e91..7f24213 100644
+--- a/src/com/android/providers/downloads/DownloadProvider.java
++++ b/src/com/android/providers/downloads/DownloadProvider.java
+@@ -42,7 +42,6 @@ import android.database.DatabaseUtils;
+ import android.database.SQLException;
+ import android.database.sqlite.SQLiteDatabase;
+ import android.database.sqlite.SQLiteOpenHelper;
+-import android.database.sqlite.SQLiteQueryBuilder;
+ import android.net.Uri;
+ import android.os.Binder;
+ import android.os.ParcelFileDescriptor;
+@@ -927,6 +926,8 @@ public final class DownloadProvider extends ContentProvider {
+              final String selection, final String[] selectionArgs,
+              final String sort) {
+ 
++        Helpers.validateSelection(selection, sAppReadableColumnsSet);
++
+         SQLiteDatabase db = mOpenHelper.getReadableDatabase();
+ 
+         int match = sURIMatcher.match(uri);
+@@ -973,10 +974,7 @@ public final class DownloadProvider extends ContentProvider {
+             logVerboseQueryInfo(projection, selection, selectionArgs, sort, db);
+         }
+ 
+-        SQLiteQueryBuilder builder = new SQLiteQueryBuilder();
+-        builder.setTables(DB_TABLE);
+-        builder.setStrict(true);
+-        Cursor ret = builder.query(db, projection, fullSelection.getSelection(),
++        Cursor ret = db.query(DB_TABLE, projection, fullSelection.getSelection(),
+                 fullSelection.getParameters(), null, null, sort);
+ 
+         if (ret != null) {
+diff --git a/src/com/android/providers/downloads/DownloadStorageProvider.java b/src/com/android/providers/downloads/DownloadStorageProvider.java
+index 6f632b4..acf7c53 100644
+--- a/src/com/android/providers/downloads/DownloadStorageProvider.java
++++ b/src/com/android/providers/downloads/DownloadStorageProvider.java
+@@ -108,8 +108,8 @@ public class DownloadStorageProvider extends DocumentsProvider {
+         final MatrixCursor result = new MatrixCursor(resolveRootProjection(projection));
+         final RowBuilder row = result.newRow();
+         row.add(Root.COLUMN_ROOT_ID, DOC_ID_ROOT);
+-        row.add(Root.COLUMN_FLAGS, Root.FLAG_LOCAL_ONLY | Root.FLAG_SUPPORTS_RECENTS
+-                | Root.FLAG_SUPPORTS_CREATE | Root.FLAG_SUPPORTS_SEARCH);
++        row.add(Root.COLUMN_FLAGS,
++                Root.FLAG_LOCAL_ONLY | Root.FLAG_SUPPORTS_RECENTS | Root.FLAG_SUPPORTS_CREATE);
+         row.add(Root.COLUMN_ICON, R.mipmap.ic_launcher_download);
+         row.add(Root.COLUMN_TITLE, getContext().getString(R.string.root_downloads));
+         row.add(Root.COLUMN_DOCUMENT_ID, DOC_ID_ROOT);
+@@ -313,28 +313,6 @@ public class DownloadStorageProvider extends DocumentsProvider {
+         return result;
+     }
+ 
+-    @Override
+-    public Cursor querySearchDocuments(String rootId, String query, String[] projection)
+-            throws FileNotFoundException {
+-        final MatrixCursor result = new MatrixCursor(resolveDocumentProjection(projection));
+-
+-        // Delegate to real provider
+-        final long token = Binder.clearCallingIdentity();
+-        Cursor cursor = null;
+-        try {
+-            cursor = mDm.query(new DownloadManager.Query().setOnlyIncludeVisibleInDownloadsUi(true)
+-                    .setFilterByString(query));
+-            copyNotificationUri(result, cursor);
+-            while (cursor.moveToNext()) {
+-                includeDownloadFromCursor(result, cursor);
+-            }
+-        } finally {
+-            IoUtils.closeQuietly(cursor);
+-            Binder.restoreCallingIdentity(token);
+-        }
+-        return result;
+-    }
+-
+     @Override
+     public ParcelFileDescriptor openDocument(String docId, String mode, CancellationSignal signal)
+             throws FileNotFoundException {
+diff --git a/tests/src/com/android/providers/downloads/AbstractDownloadProviderFunctionalTest.java b/tests/src/com/android/providers/downloads/AbstractDownloadProviderFunctionalTest.java
+index 813252a..0330fd3 100644
+--- a/tests/src/com/android/providers/downloads/AbstractDownloadProviderFunctionalTest.java
++++ b/tests/src/com/android/providers/downloads/AbstractDownloadProviderFunctionalTest.java
+@@ -172,7 +172,6 @@ public abstract class AbstractDownloadProviderFunctionalTest extends
+ 
+         mSystemFacade.setUp();
+         assertTrue(isDatabaseEmpty()); // ensure we're not messing with real data
+-        assertTrue(isDatabaseSecureAgainstBadSelection());
+         mServer = new MockWebServer();
+         mServer.play();
+     }
+@@ -201,23 +200,6 @@ public abstract class AbstractDownloadProviderFunctionalTest extends
+         }
+     }
+ 
+-    private boolean isDatabaseSecureAgainstBadSelection() {
+-        Cursor cursor = null;
+-        try {
+-            cursor = mResolver.query(Downloads.Impl.ALL_DOWNLOADS_CONTENT_URI, null,
+-                    "('1'='1'))) ORDER BY lastmod DESC--", null, null);
+-        }
+-        catch (Exception e) {
+-            return true;
+-        } finally {
+-            if (cursor != null) {
+-                cursor.close();
+-            }
+-        }
+-
+-        return false;
+-    }
+-
+     /**
+      * Remove any downloaded files and delete any lingering downloads.
+      */
+-- 
+2.17.1
